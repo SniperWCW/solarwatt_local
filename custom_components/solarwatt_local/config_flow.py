@@ -1,48 +1,44 @@
 from __future__ import annotations
 
-
 import voluptuous as vol
 from homeassistant import config_entries
-from homeassistant.core import callback
-from .const import DOMAIN
+from homeassistant.core import HomeAssistant
+from homeassistant.helpers.typing import ConfigType
 
+from .const import DOMAIN, DEFAULT_SCAN_INTERVAL
+from .api import SolarwattAPI
 
-STEP_USER_DATA_SCHEMA = vol.Schema({
-vol.Required("host"): str,
-vol.Required("password"): str,
-vol.Optional("scan_interval", default=15): int,
-})
-
-
+STEP_USER_DATA_SCHEMA = vol.Schema(
+    {
+        vol.Required("host"): str,
+        vol.Required("password"): str,
+        vol.Optional("scan_interval", default=DEFAULT_SCAN_INTERVAL): int,
+    }
+)
 
 
 class SolarwattConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
-VERSION = 1
+    """Handle a config flow for Solarwatt Local integration."""
 
+    VERSION = 1
 
-async def async_step_user(self, user_input=None):
-if user_input is None:
-return self.async_show_form(step_id="user", data_schema=STEP_USER_DATA_SCHEMA)
+    async def async_step_user(self, user_input: ConfigType | None = None):
+        errors = {}
 
+        if user_input is not None:
+            host = user_input["host"]
+            password = user_input["password"]
 
-# validate by trying to login and fetch items
-host = user_input["host"]
-password = user_input["password"]
-scan_interval = user_input.get("scan_interval", 15)
+            api = SolarwattAPI(host, password)
 
+            try:
+                # Test connection
+                await api.get_items()
+            except Exception:
+                errors["base"] = "cannot_connect"
+            else:
+                return self.async_create_entry(title="Solarwatt Local", data=user_input)
 
-from .api import SolarwattAPI
-api = SolarwattAPI(host, password)
-try:
-await api.login()
-items = await api.get_items()
-except Exception as err:
-return self.async_show_form(
-step_id="user",
-data_schema=STEP_USER_DATA_SCHEMA,
-errors={"base": "auth"},
-)
-await api.close()
-
-
-return self.async_create_entry(title=f"Solarwatt {host}", data={"host": host, "password": password}, options={"scan_interval": scan_interval})
+        return self.async_show_form(
+            step_id="user", data_schema=STEP_USER_DATA_SCHEMA, errors=errors
+        )
