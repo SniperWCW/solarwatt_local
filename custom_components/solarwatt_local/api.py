@@ -1,73 +1,38 @@
-import asyncio
-from aiohttp import ClientSession, ClientResponseError, TCPConnector
-from yarl import URL
-import json
 import logging
+from aiohttp import ClientSession, CookieJar
 
 _LOGGER = logging.getLogger(__name__)
 
 class SolarwattAPI:
-    def __init__(self, host: str, password: str, session: ClientSession | None = None):
-        self.base = URL(f"http://{host}")
+    def __init__(self, host: str, password: str):
+        self.host = host
         self.password = password
-        # Use connector that allows IPv4/IPv6 etc.
-        self._session = session or ClientSession(connector=TCPConnector(ssl=False))
+        self._session = ClientSession(cookie_jar=CookieJar(unsafe=True))
         self._logged_in = False
 
-    async def login(self) -> int:
-        """Login to the Solarwatt gateway."""
-        login_url = self.base.with_path("/auth/login")
+    async def login(self):
+        login_url = f"http://{self.host}/auth/login"
         data = {"username": "installer", "password": self.password, "url": "/"}
-        async with self._session.post(str(login_url), data=data, allow_redirects=True) as resp:
-            if resp.status not in (200, 302, 303):
-                text = await resp.text()
-                _LOGGER.error("Login failed with status %s: %s", resp.status, text)
-                raise ClientResponseError(
-                    resp.request_info,
-                    resp.history,
-                    status=resp.status,
-                    message=f"Login failed, status {resp.status}, content: {text}"
-                )
+        async with self._session.post(login_url, data=data) as resp:
+            text = await resp.text()
+            if resp.status != 200 or "logon" in text.lower():
+                raise Exception(f"Login fehlgeschlagen, Status: {resp.status}")
             self._logged_in = True
-            _LOGGER.debug("Login successful")
-            return resp.status
+            _LOGGER.info("Login erfolgreich bei Solarwatt Gateway %s", self.host)
 
     async def get_items(self):
-        """Get all items from the gateway."""
         if not self._logged_in:
             await self.login()
-        items_url = self.base.with_path("/rest/items")
-        try:
-            async with self._session.get(str(items_url)) as resp:
-                resp.raise_for_status()
-                try:
-                    return await resp.json(content_type=None)  # allow JSON even if Content-Type wrong
-                except Exception:
-                    text = await resp.text()
-                    return json.loads(text)
-        except Exception as e:
-            _LOGGER.error("Failed to get items: %s", e)
-            raise
-
-    async def get_item(self, item_name: str):
-        """Get a single item by name."""
-        if not self._logged_in:
-            await self.login()
-        url = self.base.with_path(f"/rest/items/{item_name}")
-        try:
-            async with self._session.get(str(url)) as resp:
-                resp.raise_for_status()
-                try:
-                    return await resp.json(content_type=None)
-                except Exception:
-                    text = await resp.text()
-                    return json.loads(text)
-        except Exception as e:
-            _LOGGER.error("Failed to get item %s: %s", item_name, e)
-            raise
+        url = f"http://{self.host}/rest/items"
+        async with self._session.get(url) as resp:
+            if resp.status != 200:
+                raise Exception(f"Fehler beim Abrufen von Items: HTTP {resp.status}")
+            try:
+                return await resp.json()
+            except Exception:
+                text = await resp.text()
+                _LOGGER.error("Antwort ist kein JSON, Text: %s", text[:200])
+                raise
 
     async def close(self):
-        """Close the session."""
-        if self._session and not self._session.closed:
-            await self._session.close()
-            _LOGGER.debug("Client session closed")
+        await self._session.close()
