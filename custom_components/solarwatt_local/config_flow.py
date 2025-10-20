@@ -7,6 +7,10 @@ from homeassistant.helpers.typing import ConfigType
 
 from .const import DOMAIN, DEFAULT_SCAN_INTERVAL
 from .api import SolarwattAPI
+import asyncio
+import logging
+
+_LOGGER = logging.getLogger(__name__)
 
 STEP_USER_DATA_SCHEMA = vol.Schema(
     {
@@ -15,7 +19,6 @@ STEP_USER_DATA_SCHEMA = vol.Schema(
         vol.Optional("scan_interval", default=DEFAULT_SCAN_INTERVAL): int,
     }
 )
-
 
 class SolarwattConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     """Handle a config flow for Solarwatt Local integration."""
@@ -32,12 +35,17 @@ class SolarwattConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             api = SolarwattAPI(host, password)
 
             try:
-                # Test connection
+                # Verbindung testen
                 await api.get_items()
-            except Exception:
+            except Exception as e:
                 errors["base"] = "cannot_connect"
+                _LOGGER.error("Fehler beim Verbinden zu Solarwatt: %s", e)
+                # Session immer schließen, auch bei Fehler
+                await api.close()
             else:
-                return self.async_create_entry(title="Solarwatt Local", data=user_input)
+                # Verbindung erfolgreich, Config-Eintrag erstellen
+                await api.close()  # Session schließen, weil Coordinator später eigene Session nutzen kann
+                return self.async_create_entry(title=f"Solarwatt {host}", data=user_input)
 
         return self.async_show_form(
             step_id="user", data_schema=STEP_USER_DATA_SCHEMA, errors=errors
