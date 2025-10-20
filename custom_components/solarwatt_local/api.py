@@ -13,14 +13,19 @@ class SolarwattAPI:
         self._logged_in = False
 
     async def login(self) -> int:
-        login_url = self.base.with_path("/auth/login")
-        data = {"username": "installer", "password": self.password, "url": "/"}
-        async with self._session.post(str(login_url), data=data, allow_redirects=True) as resp:
-            if resp.status not in (200, 302, 303):
-                raise ClientResponseError(resp.request_info, resp.history, status=resp.status)
-            # cookie should now be stored in the session's cookie_jar
-            self._logged_in = True
-            return resp.status
+    login_url = self.base.with_path("/auth/login")
+    data = {"username": "installer", "password": self.password, "url": "/"}
+    async with self._session.post(str(login_url), data=data, allow_redirects=True) as resp:
+        if resp.status not in (200, 302, 303):
+            text = await resp.text()
+            raise ClientResponseError(
+                resp.request_info,
+                resp.history,
+                status=resp.status,
+                message=f"Login failed, status {resp.status}, content: {text}"
+            )
+        self._logged_in = True
+        return resp.status
 
     async def get_items(self):
         if not self._logged_in:
