@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import asyncio
 import logging
 from datetime import timedelta
 
@@ -17,46 +16,56 @@ PLATFORMS = ["sensor"]
 
 
 async def async_setup(hass: HomeAssistant, config: dict):
+    """Set up the integration (no config flow)."""
     hass.data.setdefault(DOMAIN, {})
     return True
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
+    """Set up Solarwatt Local from a config entry."""
     host = entry.data.get("host")
     password = entry.data.get("password")
     scan_interval = entry.options.get("scan_interval", DEFAULT_SCAN_INTERVAL)
 
-    session = None
-    api = SolarwattAPI(host, password, session=session)
+    api = SolarwattAPI(host, password)
 
     async def async_update_data():
         try:
-            items = await api.get_items()
-            return items
+            return await api.get_items()
         except Exception as err:
+            _LOGGER.error("Fehler beim Abrufen der Items: %s", err)
             raise UpdateFailed(err)
 
     coordinator = DataUpdateCoordinator(
         hass,
         _LOGGER,
-        name="solarwatt",
+        name=f"solarwatt_{host}",
         update_method=async_update_data,
         update_interval=timedelta(seconds=scan_interval),
     )
 
-    # erste Aktualisierung
-    await coordinator.async_config_entry_first_refresh()
+    # Erste Aktualisierung, um sicherzustellen, dass die Verbindung klappt
+    try:
+        await coordinator.async_config_entry_first_refresh()
+    except UpdateFailed as err:
+        _LOGGER.error("Solarwatt Verbindung fehlgeschlagen beim ersten Refresh: %s", err)
+        await api.close()
+        return False
 
+    # Daten in hass.data speichern
     hass.data[DOMAIN][entry.entry_id] = {
         "api": api,
         "coordinator": coordinator,
     }
 
-    hass.config_entries.async_setup_platforms(entry, PLATFORMS)
+    # Plattformen laden
+    await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+
     return True
 
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
+    """Unload a config entry."""
     unload_ok = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
     api = hass.data[DOMAIN][entry.entry_id].get("api")
     if api:
