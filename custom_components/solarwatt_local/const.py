@@ -1,4 +1,4 @@
 DOMAIN = "solarwatt_local"
-DEFAULT_SCAN_INTERVAL = 15
-CONF_PASSWORD = "password"
-CONF_HOST = "host"
+DEFAULT_NAME = "Solarwatt Local"
+DEFAULT_HOST = "http://solarwatt.local"
+DEFAULT_SCAN_INTERVAL = 30  # Sekunden
