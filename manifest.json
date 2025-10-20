@@ -1,11 +1,9 @@
 {
-"domain": "solarwatt_local",
-"name": "Solarwatt Local",
-"version": "1.0.0",
-"documentation": "",
-"requirements": [],
-"dependencies": [],
-"codeowners": [SniperWCW],
-"config_flow": true,
-"iot_class": "local_polling"
+  "domain": "solarwatt_local",
+  "name": "Solarwatt Local",
+  "version": "0.1.0",
+  "documentation": "https://github.com/SniperWCW/solarwatt_local",
+  "requirements": [],
+  "codeowners": ["@SniperWCW"],
+  "iot_class": "local_polling"
 }
